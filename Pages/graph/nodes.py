@@ -5,7 +5,7 @@ from .state import AgentState
 import json
 from typing import Literal
 from .tools import complete_python_task
-from langgraph.prebuilt import ToolInvocation, ToolExecutor
+from langgraph.prebuilt import ToolExecutor
 import os
 
 
@@ -71,10 +71,10 @@ def call_tools(state: AgentState):
     tool_invocations = []
     if isinstance(last_message, AIMessage) and hasattr(last_message, 'tool_calls'):
         tool_invocations = [
-            ToolInvocation(
-                tool=tool_call["name"],
-                tool_input={**tool_call["args"], "graph_state": state}
-            ) for tool_call in last_message.tool_calls
+            {
+                "tool": tool_call["name"],
+                "tool_input": {**tool_call["args"], "graph_state": state}
+            } for tool_call in last_message.tool_calls
         ]
 
     responses = tool_executor.batch(tool_invocations, return_exceptions=True)

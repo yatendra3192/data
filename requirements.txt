@@ -1,9 +1,11 @@
 pandas
 streamlit
 langchain-core
+langchain-community
 scikit-learn
 plotly
 langchain
 langgraph
 langchain-openai
 langchain-experimental
+pydantic

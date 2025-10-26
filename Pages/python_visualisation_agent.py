@@ -2,13 +2,19 @@ import streamlit as st
 import pandas as pd
 import os
 import json
+import uuid
 from langchain_core.messages import HumanMessage, AIMessage
 from Pages.backend import PythonChatbot, InputData
 import pickle
 
-# Create uploads directory if it doesn't exist
-if not os.path.exists("uploads"):
-    os.makedirs("uploads")
+# Initialize session state for user-specific uploads
+if 'session_id' not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+
+# Create session-specific upload directory
+session_upload_dir = os.path.join("uploads", st.session_state.session_id)
+if not os.path.exists(session_upload_dir):
+    os.makedirs(session_upload_dir)
 
 st.title("Data Analysis Dashboard")
 
@@ -23,14 +29,14 @@ with tab1:
     uploaded_files = st.file_uploader("Upload CSV files", type="csv", accept_multiple_files=True)
 
     if uploaded_files:
-        # Save uploaded files
+        # Save uploaded files to session-specific directory
         for file in uploaded_files:
-            with open(os.path.join("uploads", file.name), "wb") as f:
+            with open(os.path.join(session_upload_dir, file.name), "wb") as f:
                 f.write(file.getbuffer())
         st.success("Files uploaded successfully!")
 
-    # Get list of available CSV files
-    available_files = [f for f in os.listdir("uploads") if f.endswith('.csv')]
+    # Get list of available CSV files (only from this session)
+    available_files = [f for f in os.listdir(session_upload_dir) if f.endswith('.csv')]
 
     if available_files:
         # File selection
@@ -51,7 +57,7 @@ with tab1:
             for tab, filename in zip(file_tabs, selected_files):
                 with tab:
                     try:
-                        df = pd.read_csv(os.path.join("uploads", filename))
+                        df = pd.read_csv(os.path.join(session_upload_dir, filename))
                         st.write(f"Preview of {filename}:")
                         st.dataframe(df.head())
                         
@@ -117,10 +123,10 @@ with tab2:
         user_query = st.session_state['user_input']
         input_data_list = [
             InputData(
-                variable_name=f"{file.split('.')[0]}", 
-                data_path=os.path.abspath(os.path.join("uploads", file)), 
+                variable_name=f"{file.split('.')[0]}",
+                data_path=os.path.abspath(os.path.join(session_upload_dir, file)),
                 data_description=data_dictionary.get(file, {}).get('description', '')
-            ) 
+            )
             for file in selected_files
         ]
         st.session_state.visualisation_chatbot.user_sent_message(user_query, input_data=input_data_list)

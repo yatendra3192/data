@@ -5,7 +5,6 @@ from .state import AgentState
 import json
 from typing import Literal
 from .tools import complete_python_task
-from langgraph.prebuilt import ToolExecutor
 import os
 
 
@@ -14,7 +13,9 @@ llm = ChatOpenAI(model="gpt-4o", temperature=0)
 tools = [complete_python_task]
 
 model = llm.bind_tools(tools)
-tool_executor = ToolExecutor(tools)
+
+# Create a simple tool executor
+tools_by_name = {tool.name: tool for tool in tools}
 
 with open(os.path.join(os.path.dirname(__file__), "../prompts/main_prompt.md"), "r") as file:
     prompt = file.read()
@@ -68,33 +69,43 @@ def call_model(state: AgentState):
 
 def call_tools(state: AgentState):
     last_message = state["messages"][-1]
-    tool_invocations = []
-    if isinstance(last_message, AIMessage) and hasattr(last_message, 'tool_calls'):
-        tool_invocations = [
-            {
-                "tool": tool_call["name"],
-                "tool_input": {**tool_call["args"], "graph_state": state}
-            } for tool_call in last_message.tool_calls
-        ]
-
-    responses = tool_executor.batch(tool_invocations, return_exceptions=True)
     tool_messages = []
     state_updates = {}
 
-    for tc, response in zip(last_message.tool_calls, responses):
-        if isinstance(response, Exception):
-            raise response
-        message, updates = response
-        tool_messages.append(ToolMessage(
-            content=str(message),
-            name=tc["name"],
-            tool_call_id=tc["id"]
-        ))
-        state_updates.update(updates)
+    if isinstance(last_message, AIMessage) and hasattr(last_message, 'tool_calls'):
+        for tool_call in last_message.tool_calls:
+            tool_name = tool_call["name"]
+            tool_input = {**tool_call["args"], "graph_state": state}
+
+            # Execute the tool
+            try:
+                tool = tools_by_name[tool_name]
+                response = tool.invoke(tool_input)
+
+                # Handle response
+                if isinstance(response, tuple) and len(response) == 2:
+                    message, updates = response
+                else:
+                    message = response
+                    updates = {}
+
+                tool_messages.append(ToolMessage(
+                    content=str(message),
+                    name=tool_name,
+                    tool_call_id=tool_call["id"]
+                ))
+                state_updates.update(updates)
+            except Exception as e:
+                # Handle errors gracefully
+                tool_messages.append(ToolMessage(
+                    content=f"Error executing tool: {str(e)}",
+                    name=tool_name,
+                    tool_call_id=tool_call["id"]
+                ))
 
     if 'messages' not in state_updates:
         state_updates["messages"] = []
 
-    state_updates["messages"] = tool_messages 
+    state_updates["messages"] = tool_messages
     return state_updates
 
